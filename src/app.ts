@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import errorMiddleware from './middleware/error';
 import userRouter from './routes/user.route';
+
 export const app: Express = express();
 
 // dotenv
@@ -31,7 +32,7 @@ app.get('/test', (req: Request, res: Response, next: NextFunction) => {
     })
 });
 
-// unknown route
+// catch all the routes which are not available
 app.all('*', (req: Request, res: Response, next: NextFunction) => {
     const err = new Error(`Route ${req.originalUrl} not found`) as any;
     err.statusCode = 404;

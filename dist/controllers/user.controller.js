@@ -12,12 +12,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createActivationToken = exports.registerUser = void 0;
+exports.activateUser = exports.createActivationToken = exports.registerUser = void 0;
 const errorHandler_1 = __importDefault(require("../utils/errorHandler"));
 const asyncError_1 = __importDefault(require("../middleware/asyncError"));
 const user_model_1 = __importDefault(require("../models/user.model"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const dotenv_1 = __importDefault(require("dotenv"));
+// import ejs from 'ejs';
+// import path from "path";
 const sendMail_1 = __importDefault(require("../utils/sendMail"));
 dotenv_1.default.config();
 exports.registerUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
@@ -44,6 +46,7 @@ exports.registerUser = (0, asyncError_1.default)((req, res, next) => __awaiter(v
         };
         console.log(user);
         // const html = ejs.renderFile(path.join(__dirname, '../templates/activation-mail.ejs'), data);
+        // try to send an email with the account activation code,
         try {
             yield (0, sendMail_1.default)({
                 email: user.email,
@@ -81,3 +84,28 @@ const createActivationToken = (user) => {
     };
 };
 exports.createActivationToken = createActivationToken;
+exports.activateUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { activation_code, activation_token } = req.body;
+        const newUser = jsonwebtoken_1.default.verify(activation_token, process.env.ACTIVATION_SECRET);
+        if (newUser.activationCode !== activation_code) {
+            return next(new errorHandler_1.default('Invalid activation code', 400));
+        }
+        const { name, email, password } = newUser.user;
+        const existingUser = yield user_model_1.default.findOne({ email });
+        if (existingUser) {
+            return next(new errorHandler_1.default('User already exists', 400));
+        }
+        const user = yield user_model_1.default.create({
+            name,
+            email,
+            password
+        });
+        res.status(201).json({
+            success: true
+        });
+    }
+    catch (err) {
+        return next(new errorHandler_1.default(err.message, 400));
+    }
+}));

@@ -30,7 +30,7 @@ exports.app.get('/test', (req, res, next) => {
         message: 'api is working'
     });
 });
-// unknown route
+// catch all the routes which are not available
 exports.app.all('*', (req, res, next) => {
     const err = new Error(`Route ${req.originalUrl} not found`);
     err.statusCode = 404;

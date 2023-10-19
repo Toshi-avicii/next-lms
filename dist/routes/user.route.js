@@ -7,4 +7,5 @@ const express_1 = __importDefault(require("express"));
 const user_controller_1 = require("../controllers/user.controller");
 const userRouter = express_1.default.Router();
 userRouter.post('/registration', user_controller_1.registerUser);
+userRouter.post('/activate-user', user_controller_1.activateUser);
 exports.default = userRouter;

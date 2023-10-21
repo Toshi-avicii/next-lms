@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.activateUser = exports.createActivationToken = exports.registerUser = void 0;
+exports.logoutUser = exports.loginUser = exports.activateUser = exports.createActivationToken = exports.registerUser = void 0;
 const errorHandler_1 = __importDefault(require("../utils/errorHandler"));
 const asyncError_1 = __importDefault(require("../middleware/asyncError"));
 const user_model_1 = __importDefault(require("../models/user.model"));
@@ -21,6 +21,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 // import ejs from 'ejs';
 // import path from "path";
 const sendMail_1 = __importDefault(require("../utils/sendMail"));
+const jwt_1 = require("../utils/jwt");
 dotenv_1.default.config();
 exports.registerUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -44,7 +45,6 @@ exports.registerUser = (0, asyncError_1.default)((req, res, next) => __awaiter(v
             },
             activationCode
         };
-        console.log(user);
         // const html = ejs.renderFile(path.join(__dirname, '../templates/activation-mail.ejs'), data);
         // try to send an email with the account activation code,
         try {
@@ -103,6 +103,45 @@ exports.activateUser = (0, asyncError_1.default)((req, res, next) => __awaiter(v
         });
         res.status(201).json({
             success: true
+        });
+    }
+    catch (err) {
+        return next(new errorHandler_1.default(err.message, 400));
+    }
+}));
+// login user
+exports.loginUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { email, password } = req.body;
+        // if email or password is missing
+        if (!email || !password) {
+            return next(new errorHandler_1.default('Please enter email or password', 400));
+        }
+        // select email and password
+        const userExist = yield user_model_1.default.findOne({ email }).select('+password');
+        // if the user does not exist
+        if (!userExist) {
+            return next(new errorHandler_1.default('User does not exist', 400));
+        }
+        const passwordMatch = yield userExist.comparePassword(password);
+        if (!passwordMatch) {
+            return next(new errorHandler_1.default('Password does not match', 400));
+        }
+        // if both email and password are okay then send access token and refresh token as cookies
+        (0, jwt_1.sendToken)(userExist, 200, res);
+    }
+    catch (err) {
+        return next(new errorHandler_1.default(err.message, 400));
+    }
+}));
+// logout user
+exports.logoutUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        res.cookie("access_token", "", { maxAge: 1 });
+        res.cookie("refresh_token", "", { maxAge: 1 });
+        res.status(200).json({
+            success: true,
+            message: "user logged out successfully"
         });
     }
     catch (err) {

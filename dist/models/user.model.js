@@ -14,7 +14,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importDefault(require("mongoose"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const dotenv_1 = __importDefault(require("dotenv"));
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const emailRegexPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+dotenv_1.default.config();
 // user schema
 const userSchema = new mongoose_1.default.Schema({
     name: {
@@ -66,6 +69,14 @@ userSchema.pre('save', function (next) {
         next();
     });
 });
+// sign access token when user logs in
+userSchema.methods.SignAccessToken = function () {
+    return jsonwebtoken_1.default.sign({ id: this._id }, process.env.ACCESS_TOKEN || '');
+};
+// sign refresh token when user logs in
+userSchema.methods.SignRefreshToken = function () {
+    return jsonwebtoken_1.default.sign({ id: this._id }, process.env.REFRESH_TOKEN || '');
+};
 // compare passwords
 userSchema.methods.comparePassword = function (enteredPassword) {
     return __awaiter(this, void 0, void 0, function* () {

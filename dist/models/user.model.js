@@ -71,11 +71,15 @@ userSchema.pre('save', function (next) {
 });
 // sign access token when user logs in
 userSchema.methods.SignAccessToken = function () {
-    return jsonwebtoken_1.default.sign({ id: this._id }, process.env.ACCESS_TOKEN || '');
+    return jsonwebtoken_1.default.sign({ id: this._id }, process.env.ACCESS_TOKEN || '', {
+        expiresIn: "5m"
+    });
 };
 // sign refresh token when user logs in
 userSchema.methods.SignRefreshToken = function () {
-    return jsonwebtoken_1.default.sign({ id: this._id }, process.env.REFRESH_TOKEN || '');
+    return jsonwebtoken_1.default.sign({ id: this._id }, process.env.REFRESH_TOKEN || '', {
+        expiresIn: "3d"
+    });
 };
 // compare passwords
 userSchema.methods.comparePassword = function (enteredPassword) {

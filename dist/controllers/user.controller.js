@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logoutUser = exports.loginUser = exports.activateUser = exports.createActivationToken = exports.registerUser = void 0;
+exports.updateAccessToken = exports.logoutUser = exports.loginUser = exports.activateUser = exports.createActivationToken = exports.registerUser = void 0;
 const errorHandler_1 = __importDefault(require("../utils/errorHandler"));
 const asyncError_1 = __importDefault(require("../middleware/asyncError"));
 const user_model_1 = __importDefault(require("../models/user.model"));
@@ -22,6 +22,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 // import path from "path";
 const sendMail_1 = __importDefault(require("../utils/sendMail"));
 const jwt_1 = require("../utils/jwt");
+const redis_1 = require("../utils/redis");
 dotenv_1.default.config();
 exports.registerUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -136,12 +137,47 @@ exports.loginUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void
 }));
 // logout user
 exports.logoutUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     try {
         res.cookie("access_token", "", { maxAge: 1 });
         res.cookie("refresh_token", "", { maxAge: 1 });
+        const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a._id) || '';
+        redis_1.redis.del(userId);
         res.status(200).json({
             success: true,
             message: "user logged out successfully"
+        });
+    }
+    catch (err) {
+        return next(new errorHandler_1.default(err.message, 400));
+    }
+}));
+// update user access token
+exports.updateAccessToken = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // creating access token on the basis of refresh token
+        const refresh_token = req.cookies.refresh_token;
+        const decoded = jsonwebtoken_1.default.verify(refresh_token, process.env.REFRESH_TOKEN);
+        const message = 'Could not refresh token';
+        if (!decoded) {
+            return next(new errorHandler_1.default(message, 400));
+        }
+        const session = yield redis_1.redis.get(decoded.id);
+        if (!session) {
+            return next(new errorHandler_1.default(message, 400));
+        }
+        const user = JSON.parse(session);
+        const accessToken = jsonwebtoken_1.default.sign({ id: user._id }, process.env.ACCESS_TOKEN, {
+            expiresIn: "5m"
+        });
+        const refreshToken = jsonwebtoken_1.default.sign({ id: user._id }, process.env.REFRESH_TOKEN, {
+            expiresIn: "3d"
+        });
+        res.cookie("access_token", accessToken, jwt_1.accessTokenOptions);
+        res.cookie("refresh_token", refreshToken, jwt_1.refreshTokenOptions);
+        res.status(200).json({
+            success: true,
+            accessToken
         });
     }
     catch (err) {

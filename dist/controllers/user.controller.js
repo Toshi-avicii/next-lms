@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateAccessToken = exports.logoutUser = exports.loginUser = exports.activateUser = exports.createActivationToken = exports.registerUser = void 0;
+exports.updateUserPassword = exports.updateUserInfo = exports.socialAuth = exports.getUserInfo = exports.updateAccessToken = exports.logoutUser = exports.loginUser = exports.activateUser = exports.createActivationToken = exports.registerUser = void 0;
 const errorHandler_1 = __importDefault(require("../utils/errorHandler"));
 const asyncError_1 = __importDefault(require("../middleware/asyncError"));
 const user_model_1 = __importDefault(require("../models/user.model"));
@@ -20,9 +20,11 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const dotenv_1 = __importDefault(require("dotenv"));
 // import ejs from 'ejs';
 // import path from "path";
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const sendMail_1 = __importDefault(require("../utils/sendMail"));
 const jwt_1 = require("../utils/jwt");
 const redis_1 = require("../utils/redis");
+const user_service_1 = require("../services/user.service");
 dotenv_1.default.config();
 exports.registerUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -173,11 +175,100 @@ exports.updateAccessToken = (0, asyncError_1.default)((req, res, next) => __awai
         const refreshToken = jsonwebtoken_1.default.sign({ id: user._id }, process.env.REFRESH_TOKEN, {
             expiresIn: "3d"
         });
+        req.user = user;
         res.cookie("access_token", accessToken, jwt_1.accessTokenOptions);
         res.cookie("refresh_token", refreshToken, jwt_1.refreshTokenOptions);
         res.status(200).json({
             success: true,
             accessToken
+        });
+    }
+    catch (err) {
+        return next(new errorHandler_1.default(err.message, 400));
+    }
+}));
+// get user info
+exports.getUserInfo = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    var _b;
+    try {
+        const userId = (_b = req.user) === null || _b === void 0 ? void 0 : _b._id;
+        (0, user_service_1.getUserById)(userId, res);
+    }
+    catch (err) {
+        return next(new errorHandler_1.default(err.message, 400));
+    }
+}));
+// social auth
+exports.socialAuth = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { avatar, name, email, password } = req.body;
+        const user = yield user_model_1.default.findOne({ email });
+        if (!user) {
+            const newUser = yield user_model_1.default.create({ name, email, avatar, password });
+            (0, jwt_1.sendToken)(newUser, 200, res);
+        }
+        else {
+            (0, jwt_1.sendToken)(user, 200, res);
+        }
+    }
+    catch (err) {
+        return next(new errorHandler_1.default(err.message, 400));
+    }
+}));
+// update user info
+exports.updateUserInfo = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    var _c;
+    try {
+        const { name, email } = req.body;
+        const userId = (_c = req.user) === null || _c === void 0 ? void 0 : _c._id;
+        const user = yield user_model_1.default.findById(userId);
+        let updatedUser;
+        if (!req.body) {
+            return next(new errorHandler_1.default('request body is empty', 400));
+        }
+        if (email && user) {
+            const isEmailExist = yield user_model_1.default.findOne({ email });
+            if (isEmailExist) {
+                return next(new errorHandler_1.default('user email already exists', 400));
+            }
+            updatedUser = yield user_model_1.default.findByIdAndUpdate(userId, { $set: { email } }, { new: true });
+        }
+        if (name && user) {
+            updatedUser = yield user_model_1.default.findByIdAndUpdate(userId, { $set: { name } }, { new: true });
+        }
+        yield redis_1.redis.set(userId, JSON.stringify(updatedUser));
+        res.status(201).json({
+            success: true,
+            updatedUser
+        });
+    }
+    catch (err) {
+        return next(new errorHandler_1.default(err.message, 400));
+    }
+}));
+// update user password
+exports.updateUserPassword = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    var _d, _e;
+    try {
+        const { newPassword, oldPassword } = req.body;
+        const userId = (_d = req.user) === null || _d === void 0 ? void 0 : _d._id;
+        const user = yield user_model_1.default.findById((_e = req.user) === null || _e === void 0 ? void 0 : _e._id).select("+password");
+        let updatedUser;
+        if (!oldPassword || !newPassword) {
+            return next(new errorHandler_1.default('password is undefined', 400));
+        }
+        if (!(user === null || user === void 0 ? void 0 : user.password)) {
+            return next(new errorHandler_1.default('password is undefined', 400));
+        }
+        const passwordMatch = yield user.comparePassword(oldPassword);
+        if (!passwordMatch) {
+            return next(new errorHandler_1.default('password does not match', 400));
+        }
+        updatedUser = yield user_model_1.default.findOneAndUpdate({ _id: userId }, { $set: { password: yield bcryptjs_1.default.hash(newPassword, 10) } }, { new: true });
+        redis_1.redis.set(userId, JSON.stringify(user));
+        res.status(201).json({
+            success: true,
+            updatedUser
         });
     }
     catch (err) {

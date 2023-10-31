@@ -12,4 +12,8 @@ userRouter.post('/activate-user', user_controller_1.activateUser);
 userRouter.post('/login', user_controller_1.loginUser);
 userRouter.get('/logout', auth_1.isAuthenticated, user_controller_1.logoutUser);
 userRouter.get('/refresh-token', user_controller_1.updateAccessToken);
+userRouter.get('/me', auth_1.isAuthenticated, user_controller_1.getUserInfo);
+userRouter.post('/social-auth', user_controller_1.socialAuth);
+userRouter.put('/update-user-info', auth_1.isAuthenticated, user_controller_1.updateUserInfo);
+userRouter.put('/update-user-password', auth_1.isAuthenticated, user_controller_1.updateUserPassword);
 exports.default = userRouter;

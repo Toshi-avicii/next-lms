@@ -6,9 +6,11 @@ import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
 import dotenv from 'dotenv';
 // import ejs from 'ejs';
 // import path from "path";
+import bcrypt from 'bcryptjs';
 import sendMail from "../utils/sendMail";
 import { accessTokenOptions, refreshTokenOptions, sendToken } from "../utils/jwt";
 import { redis } from "../utils/redis";
+import { getUserById } from "../services/user.service";
 
 dotenv.config();
 
@@ -34,13 +36,30 @@ interface LoginRequest {
     password: string;
 }
 
-export const registerUser = asyncErrorMiddleware(async(req: Request, res: Response, next: NextFunction) => {
+interface SocialAuthBody {
+    name: string;
+    email: string;
+    password: string;
+    avatar: string
+}
+
+interface UpdateUserInfoBody {
+    name?: string;
+    email?: string;
+}
+
+interface UpdateUserPassword {
+    oldPassword: string;
+    newPassword: string;
+}
+
+export const registerUser = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { name, email, password } = req.body;
         // if the user's email is already in db, then don't let them register
         const isEmailExist = await userModel.findOne({ email });
 
-        if(isEmailExist) {
+        if (isEmailExist) {
             return next(new ErrorHandler('Email already exists', 400));
         }
 
@@ -55,7 +74,7 @@ export const registerUser = asyncErrorMiddleware(async(req: Request, res: Respon
         const activationCode = activationToken.activationCode;
 
         const data = {
-            user: { 
+            user: {
                 name: user.name
             },
             activationCode
@@ -77,14 +96,14 @@ export const registerUser = asyncErrorMiddleware(async(req: Request, res: Respon
                 message: `Please check your email: ${user.email} for activation code.`,
                 activationToken: activationToken.token
             })
-        } catch(err: any) {
+        } catch (err: any) {
             res.status(400).json({
                 success: false,
                 message: 'request failed'
             })
         }
 
-    } catch(err: any) {
+    } catch (err: any) {
         return next(new ErrorHandler(err.message, 400))
     }
 });
@@ -103,7 +122,7 @@ export const createActivationToken = (user: RegisterationBody): ActivationToken 
     }
 }
 
-export const activateUser = asyncErrorMiddleware(async(req: Request, res: Response, next: NextFunction) => {
+export const activateUser = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { activation_code, activation_token } = req.body as ActivationRequest;
         const newUser: { user: IUser; activationCode: string } = jwt.verify(
@@ -111,7 +130,7 @@ export const activateUser = asyncErrorMiddleware(async(req: Request, res: Respon
             process.env.ACTIVATION_SECRET as string
         ) as { user: IUser; activationCode: string }
 
-        if(newUser.activationCode !== activation_code) {
+        if (newUser.activationCode !== activation_code) {
             return next(new ErrorHandler('Invalid activation code', 400));
         }
 
@@ -119,32 +138,32 @@ export const activateUser = asyncErrorMiddleware(async(req: Request, res: Respon
 
         const existingUser = await userModel.findOne({ email });
 
-        if(existingUser) {
+        if (existingUser) {
             return next(new ErrorHandler('User already exists', 400));
         }
 
         const user = await userModel.create({
-            name, 
+            name,
             email,
             password
         });
 
         res.status(201).json({
-            success: true 
+            success: true
         })
-    } catch(err: any) {
+    } catch (err: any) {
         return next(new ErrorHandler(err.message, 400))
     }
 
 });
 
 // login user
-export const loginUser = asyncErrorMiddleware(async(req: Request, res: Response, next: NextFunction) => {
+export const loginUser = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { email, password } = req.body as LoginRequest;
 
         // if email or password is missing
-        if(!email || !password) {
+        if (!email || !password) {
             return next(new ErrorHandler('Please enter email or password', 400));
         }
 
@@ -152,26 +171,26 @@ export const loginUser = asyncErrorMiddleware(async(req: Request, res: Response,
         const userExist = await userModel.findOne({ email }).select('+password');
 
         // if the user does not exist
-        if(!userExist) {
+        if (!userExist) {
             return next(new ErrorHandler('User does not exist', 400));
         }
 
         const passwordMatch = await userExist.comparePassword(password);
 
-        if(!passwordMatch) {
+        if (!passwordMatch) {
             return next(new ErrorHandler('Password does not match', 400));
         }
 
         // if both email and password are okay then send access token and refresh token as cookies
         sendToken(userExist, 200, res);
 
-    } catch(err: any) {
+    } catch (err: any) {
         return next(new ErrorHandler(err.message, 400));
     }
 });
 
 // logout user
-export const logoutUser = asyncErrorMiddleware(async(req: Request, res: Response, next: NextFunction) => {
+export const logoutUser = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
     try {
         res.cookie("access_token", "", { maxAge: 1 });
         res.cookie("refresh_token", "", { maxAge: 1 });
@@ -184,26 +203,26 @@ export const logoutUser = asyncErrorMiddleware(async(req: Request, res: Response
             success: true,
             message: "user logged out successfully"
         })
-    } catch(err: any) {
+    } catch (err: any) {
         return next(new ErrorHandler(err.message, 400));
     }
 })
 
 // update user access token
-export const updateAccessToken = asyncErrorMiddleware(async(req: Request, res: Response, next: NextFunction) => {
+export const updateAccessToken = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
     try {
         // creating access token on the basis of refresh token
         const refresh_token = req.cookies.refresh_token as string;
         const decoded = jwt.verify(refresh_token, process.env.REFRESH_TOKEN as string) as JwtPayload;
         const message = 'Could not refresh token';
 
-        if(!decoded) {
+        if (!decoded) {
             return next(new ErrorHandler(message, 400));
         }
 
         const session = await redis.get(decoded.id as string);
 
-        if(!session) {
+        if (!session) {
             return next(new ErrorHandler(message, 400));
         }
 
@@ -216,6 +235,8 @@ export const updateAccessToken = asyncErrorMiddleware(async(req: Request, res: R
             expiresIn: "3d"
         });
 
+        req.user = user;
+
         res.cookie("access_token", accessToken, accessTokenOptions);
         res.cookie("refresh_token", refreshToken, refreshTokenOptions);
 
@@ -224,7 +245,111 @@ export const updateAccessToken = asyncErrorMiddleware(async(req: Request, res: R
             accessToken
         })
 
-    } catch(err: any) {
+    } catch (err: any) {
+        return next(new ErrorHandler(err.message, 400));
+    }
+})
+
+// get user info
+export const getUserInfo = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.user?._id;
+        getUserById(userId, res);
+    } catch (err: any) {
+        return next(new ErrorHandler(err.message, 400));
+    }
+})
+
+// social auth
+export const socialAuth = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { avatar, name, email, password } = req.body as SocialAuthBody;
+        const user = await userModel.findOne({ email });
+        if (!user) {
+            const newUser = await userModel.create({ name, email, avatar, password });
+            sendToken(newUser, 200, res);
+        } else {
+            sendToken(user, 200, res);
+        }
+
+
+    } catch (err: any) {
+        return next(new ErrorHandler(err.message, 400));
+    }
+})
+
+// update user info
+export const updateUserInfo = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { name, email } = req.body as UpdateUserInfoBody;
+        const userId = req.user?._id;
+        const user = await userModel.findById(userId);
+        let updatedUser;
+
+        if (!req.body) {
+            return next(new ErrorHandler('request body is empty', 400))
+        }
+
+        if (email && user) {
+            const isEmailExist = await userModel.findOne({ email });
+            if (isEmailExist) {
+                return next(new ErrorHandler('user email already exists', 400));
+            }
+
+            updatedUser = await userModel.findByIdAndUpdate(userId, { $set: { email } }, { new: true });
+        }
+
+        if (name && user) {
+            updatedUser = await userModel.findByIdAndUpdate(userId, { $set: { name } }, { new: true });
+        }
+
+        await redis.set(userId, JSON.stringify(updatedUser));
+
+        res.status(201).json({
+            success: true,
+            updatedUser
+        })
+
+    } catch (err: any) {
+        return next(new ErrorHandler(err.message, 400));
+    }
+})
+
+// update user password
+export const updateUserPassword = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { newPassword, oldPassword } = req.body as UpdateUserPassword;
+        const userId = req.user?._id;
+
+        const user = await userModel.findById(req.user?._id).select("+password");
+        let updatedUser;
+
+        if(!oldPassword || !newPassword) {
+            return next(new ErrorHandler('password is undefined', 400));
+        }
+
+        if (!user?.password) {
+            return next(new ErrorHandler('password is undefined', 400));
+        }
+
+        const passwordMatch = await user.comparePassword(oldPassword);
+
+        if (!passwordMatch) {
+            return next(new ErrorHandler('password does not match', 400));
+        }
+
+        updatedUser = await userModel.findOneAndUpdate(
+            { _id: userId }, 
+            { $set: { password: await bcrypt.hash(newPassword, 10) } }, 
+            { new: true }
+        );
+
+        redis.set(userId, JSON.stringify(user));
+        res.status(201).json({
+            success: true,
+            updatedUser
+        })
+    } catch (err: any) {
         return next(new ErrorHandler(err.message, 400));
     }
 })

@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateUserPassword = exports.updateUserInfo = exports.socialAuth = exports.getUserInfo = exports.updateAccessToken = exports.logoutUser = exports.loginUser = exports.activateUser = exports.createActivationToken = exports.registerUser = void 0;
+exports.updateUserProfileAvatar = exports.updateUserPassword = exports.updateUserInfo = exports.socialAuth = exports.getUserInfo = exports.updateAccessToken = exports.logoutUser = exports.loginUser = exports.activateUser = exports.createActivationToken = exports.registerUser = void 0;
 const errorHandler_1 = __importDefault(require("../utils/errorHandler"));
 const asyncError_1 = __importDefault(require("../middleware/asyncError"));
 const user_model_1 = __importDefault(require("../models/user.model"));
@@ -25,6 +25,7 @@ const sendMail_1 = __importDefault(require("../utils/sendMail"));
 const jwt_1 = require("../utils/jwt");
 const redis_1 = require("../utils/redis");
 const user_service_1 = require("../services/user.service");
+const cloudinary_1 = __importDefault(require("cloudinary"));
 dotenv_1.default.config();
 exports.registerUser = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -265,7 +266,46 @@ exports.updateUserPassword = (0, asyncError_1.default)((req, res, next) => __awa
             return next(new errorHandler_1.default('password does not match', 400));
         }
         updatedUser = yield user_model_1.default.findOneAndUpdate({ _id: userId }, { $set: { password: yield bcryptjs_1.default.hash(newPassword, 10) } }, { new: true });
-        redis_1.redis.set(userId, JSON.stringify(user));
+        redis_1.redis.set(userId, JSON.stringify(updatedUser));
+        res.status(201).json({
+            success: true,
+            updatedUser
+        });
+    }
+    catch (err) {
+        return next(new errorHandler_1.default(err.message, 400));
+    }
+}));
+// update user profile avatar
+exports.updateUserProfileAvatar = (0, asyncError_1.default)((req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    var _f, _g, _h;
+    try {
+        const { avatar } = req.body;
+        const userId = (_f = req.user) === null || _f === void 0 ? void 0 : _f._id;
+        const user = yield user_model_1.default.findById(userId);
+        let updatedUser;
+        if (avatar && user) {
+            // if we have any previous pic then this will run,
+            if ((_g = user === null || user === void 0 ? void 0 : user.avatar) === null || _g === void 0 ? void 0 : _g.public_id) {
+                // delete the old profile pic first
+                yield cloudinary_1.default.v2.uploader.destroy((_h = user === null || user === void 0 ? void 0 : user.avatar) === null || _h === void 0 ? void 0 : _h.public_id);
+                // save the new profile pic after deleting the previous one.
+                const myCloud = yield cloudinary_1.default.v2.uploader.upload(avatar, {
+                    folder: "avatars",
+                    width: 150
+                });
+                // update the url of the avatar in the db.
+                updatedUser = yield user_model_1.default.findByIdAndUpdate(userId, { $set: { avatar: { public_id: myCloud.public_id, url: myCloud.url } } }, { new: true });
+            }
+            else { // if we don't have any previous pic, then it will run
+                const myCloud = yield cloudinary_1.default.v2.uploader.upload(avatar, {
+                    folder: "avatars",
+                    width: 150
+                });
+                updatedUser = yield user_model_1.default.findByIdAndUpdate(userId, { $set: { avatar: { public_id: myCloud.public_id, url: myCloud.url } } }, { new: true });
+            }
+        }
+        yield redis_1.redis.set(userId, JSON.stringify(updatedUser));
         res.status(201).json({
             success: true,
             updatedUser

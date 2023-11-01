@@ -6,8 +6,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const app_1 = require("./app");
 const dotenv_1 = __importDefault(require("dotenv"));
 const db_1 = __importDefault(require("./utils/db"));
+const cloudinary_1 = require("cloudinary");
 // including .env file
 dotenv_1.default.config();
+cloudinary_1.v2.config({
+    cloud_name: process.env.CLOUD_NAME,
+    api_key: process.env.CLOUD_API_KEY,
+    api_secret: process.env.CLOUD_API_SECRET_KEY
+});
 // create server
 app_1.app.listen(process.env.PORT, () => {
     console.log(`server is running on port ${process.env.PORT}`);

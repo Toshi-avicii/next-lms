@@ -11,6 +11,7 @@ import sendMail from "../utils/sendMail";
 import { accessTokenOptions, refreshTokenOptions, sendToken } from "../utils/jwt";
 import { redis } from "../utils/redis";
 import { getUserById } from "../services/user.service";
+import cloudinary from 'cloudinary';
 
 dotenv.config();
 
@@ -51,6 +52,10 @@ interface UpdateUserInfoBody {
 interface UpdateUserPassword {
     oldPassword: string;
     newPassword: string;
+}
+
+interface UpdateUserProfile {
+    avatar: string;
 }
 
 export const registerUser = asyncErrorMiddleware(async (req: Request, res: Response, next: NextFunction) => {
@@ -344,12 +349,63 @@ export const updateUserPassword = asyncErrorMiddleware(async (req: Request, res:
             { new: true }
         );
 
-        redis.set(userId, JSON.stringify(user));
+        redis.set(userId, JSON.stringify(updatedUser));
         res.status(201).json({
             success: true,
             updatedUser
         })
     } catch (err: any) {
+        return next(new ErrorHandler(err.message, 400));
+    }
+})
+
+// update user profile avatar
+export const updateUserProfileAvatar = asyncErrorMiddleware(async(req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { avatar }: UpdateUserProfile = req.body;
+        const userId = req.user?._id;
+        const user = await userModel.findById(userId);
+        let updatedUser;
+
+        if(avatar && user) {
+            // if we have any previous pic then this will run,
+            if(user?.avatar?.public_id) {
+                // delete the old profile pic first
+                await cloudinary.v2.uploader.destroy(user?.avatar?.public_id);
+                // save the new profile pic after deleting the previous one.
+                const myCloud = await cloudinary.v2.uploader.upload(avatar, {
+                    folder: "avatars",
+                    width: 150
+                });
+    
+                // update the url of the avatar in the db.
+                updatedUser = await userModel.findByIdAndUpdate(
+                    userId, 
+                    { $set: { avatar: { public_id: myCloud.public_id, url: myCloud.url } } }, 
+                    { new: true }
+                );
+            } else { // if we don't have any previous pic, then it will run
+                const myCloud = await cloudinary.v2.uploader.upload(avatar, {
+                    folder: "avatars",
+                    width: 150
+                });
+    
+                updatedUser = await userModel.findByIdAndUpdate(
+                    userId, 
+                    { $set: { avatar: { public_id: myCloud.public_id, url: myCloud.url } } }, 
+                    { new: true }
+                );
+            }
+        }
+
+        await redis.set(userId, JSON.stringify(updatedUser));
+
+        res.status(201).json({
+            success: true,
+            updatedUser
+        });
+
+    } catch(err: any) {
         return next(new ErrorHandler(err.message, 400));
     }
 })

@@ -16,4 +16,5 @@ userRouter.get('/me', auth_1.isAuthenticated, user_controller_1.getUserInfo);
 userRouter.post('/social-auth', user_controller_1.socialAuth);
 userRouter.put('/update-user-info', auth_1.isAuthenticated, user_controller_1.updateUserInfo);
 userRouter.put('/update-user-password', auth_1.isAuthenticated, user_controller_1.updateUserPassword);
+userRouter.put('/update-user-avatar', auth_1.isAuthenticated, user_controller_1.updateUserProfileAvatar);
 exports.default = userRouter;

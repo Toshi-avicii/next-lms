@@ -10,6 +10,7 @@ const cors_1 = __importDefault(require("cors"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const error_1 = __importDefault(require("./middleware/error"));
 const user_route_1 = __importDefault(require("./routes/user.route"));
+const course_route_1 = __importDefault(require("./routes/course.route"));
 exports.app = (0, express_1.default)();
 // dotenv
 dotenv_1.default.config();
@@ -23,6 +24,7 @@ exports.app.use((0, cors_1.default)({
 }));
 // routes
 exports.app.use('/api/v1', user_route_1.default);
+exports.app.use('/api/v1', course_route_1.default);
 // tesing api url
 exports.app.get('/test', (req, res, next) => {
     res.status(200).json({
